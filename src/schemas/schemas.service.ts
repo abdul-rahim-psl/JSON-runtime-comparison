@@ -8,7 +8,7 @@ export class SchemasService {
   constructor(@Inject('KNEX_CONNECTION') private knex: Knex) {}
 
   async findByEndpointPath(endpointPath: string) {
-    const result = await this.knex('schemasTable')
+    const result = await this.knex('schemastable')
       .select('schema')
       .where({ endpoint_path: endpointPath })
       .first();
@@ -20,8 +20,8 @@ export class SchemasService {
     return 'This action adds a new schema';
   }
 
-  findAll() {
-    return `This action returns all schemas`;
+  async findAll() {
+    return await this.knex('schemastable').select('*');
   }
 
   findOne(id: number) {
