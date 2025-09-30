@@ -11,18 +11,16 @@ import {
 import { SchemasService } from './schemas.service';
 import { CreateSchemaDto } from './dto/create-schema.dto';
 import { UpdateSchemaDto } from './dto/update-schema.dto';
+import { LookupSchemaDto } from './dto/lookup-schema.dto';
 
 @Controller('schemas')
 export class SchemasController {
   constructor(private readonly schemasService: SchemasService) {}
 
-  @Get('lookup')
-  async lookup(@Query('path') path: string) {
-    const schema = await this.schemasService.findByEndpointPath(path);
-    if (!schema) {
-      return { message: 'Schema not found' };
-    }
-    return schema;
+  @Post('lookup')
+  async lookup(@Body() lookupDto: LookupSchemaDto) {
+    const result = await this.schemasService.lookupAndCompare(lookupDto);
+    return result;
   }
 
   @Post()
