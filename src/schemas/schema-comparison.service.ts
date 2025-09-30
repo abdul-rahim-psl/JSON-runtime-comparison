@@ -30,20 +30,18 @@ export class SchemaComparisonService {
         parsedSchema = schema;
       }
 
-      // Extract properties from JSON Schema format
+      // Use the full schema properties for validation (including types)
       let schemaProperties;
       if (parsedSchema.type === 'object' && parsedSchema.properties) {
-        // It's a JSON Schema format - extract the properties
-        schemaProperties = this.extractPropertiesStructure(
-          parsedSchema.properties,
-        );
+        // It's a JSON Schema format - use the full properties with type information
+        schemaProperties = parsedSchema.properties;
       } else {
         // Assume it's already in the right format
         schemaProperties = parsedSchema;
       }
 
-      // Perform deep comparison
-      const isMatch = this.deepCompareStructure(
+      // Perform deep comparison with type validation
+      const isMatch = this.deepCompareStructureWithTypes(
         schemaProperties,
         payload,
         '',
@@ -67,46 +65,12 @@ export class SchemaComparisonService {
     }
   }
 
-  private extractPropertiesStructure(properties: any): any {
-    const result: any = {};
-
-    for (const [key, value] of Object.entries(properties)) {
-      const propDef = value as any;
-
-      if (propDef.type === 'object' && propDef.properties) {
-        // Nested object - recursively extract its properties
-        result[key] = this.extractPropertiesStructure(propDef.properties);
-      } else if (propDef.type === 'array' && propDef.items) {
-        // Array type - extract structure of items
-        if (propDef.items.type === 'object' && propDef.items.properties) {
-          result[key] = [
-            this.extractPropertiesStructure(propDef.items.properties),
-          ];
-        } else {
-          // Simple array - just indicate it's an array with a placeholder
-          result[key] = [];
-        }
-      } else {
-        // Primitive type - just use a placeholder value
-        result[key] = null;
-      }
-    }
-
-    return result;
-  }
-
-  private deepCompareStructure(
+  private deepCompareStructureWithTypes(
     schema: any,
     payload: any,
     path: string = '',
     differences: string[],
   ): boolean {
-    // Handle null/undefined cases for schema (payload can be any value)
-    if (schema === null) {
-      // Schema is null means it's a primitive property - payload can be anything
-      return true;
-    }
-
     if (payload === null || payload === undefined) {
       differences.push(
         `${path}: Property exists in schema but is null/undefined in payload`,
@@ -114,50 +78,17 @@ export class SchemaComparisonService {
       return false;
     }
 
-    // Handle arrays
-    if (Array.isArray(schema)) {
-      if (!Array.isArray(payload)) {
-        differences.push(`${path}: Expected array but got ${typeof payload}`);
-        return false;
-      }
-
-      // Empty schema array means any array is valid
-      if (schema.length === 0) return true;
-
-      // If schema has structure, check that all payload items match the schema structure
-      if (schema.length > 0) {
-        const schemaItem = schema[0];
-        let allMatch = true;
-
-        if (payload.length === 0) {
-          differences.push(
-            `${path}: Expected array with items but got empty array`,
-          );
-          return false;
-        }
-
-        payload.forEach((payloadItem, index) => {
-          const itemPath = `${path}[${index}]`;
-          if (
-            !this.deepCompareStructure(
-              schemaItem,
-              payloadItem,
-              itemPath,
-              differences,
-            )
-          ) {
-            allMatch = false;
-          }
-        });
-
-        return allMatch;
-      }
-
-      return true;
+    // Handle JSON Schema property definitions
+    if (schema && typeof schema === 'object' && schema.type) {
+      return this.validatePropertyType(schema, payload, path, differences);
     }
 
-    // Handle objects
-    if (typeof schema === 'object' && schema !== null) {
+    // Handle objects without type definition (treat as object type)
+    if (
+      typeof schema === 'object' &&
+      schema !== null &&
+      !Array.isArray(schema)
+    ) {
       if (
         typeof payload !== 'object' ||
         payload === null ||
@@ -183,7 +114,7 @@ export class SchemaComparisonService {
         });
       }
 
-      // Check for extra keys in payload (optional - you might want to allow extra properties)
+      // Check for extra keys in payload
       const extraKeys = payloadKeys.filter((key) => !schemaKeys.includes(key));
       if (extraKeys.length > 0) {
         extraKeys.forEach((key) => {
@@ -200,7 +131,7 @@ export class SchemaComparisonService {
         if (payloadKeys.includes(key)) {
           const newPath = path ? `${path}.${key}` : key;
           if (
-            !this.deepCompareStructure(
+            !this.deepCompareStructureWithTypes(
               schema[key],
               payload[key],
               newPath,
@@ -217,7 +148,116 @@ export class SchemaComparisonService {
       return allMatch && missingKeys.length === 0 && extraKeys.length === 0;
     }
 
-    // For any other case (primitives in schema), payload can be anything
     return true;
+  }
+
+  private validatePropertyType(
+    schemaProp: any,
+    payloadValue: any,
+    path: string,
+    differences: string[],
+  ): boolean {
+    const expectedType = schemaProp.type;
+    let isValid = true;
+
+    switch (expectedType) {
+      case 'string':
+        if (typeof payloadValue !== 'string') {
+          differences.push(
+            `${path}: Expected string but got ${typeof payloadValue} (${payloadValue})`,
+          );
+          isValid = false;
+        }
+        break;
+
+      case 'number':
+        if (typeof payloadValue !== 'number') {
+          differences.push(
+            `${path}: Expected number but got ${typeof payloadValue} (${payloadValue})`,
+          );
+          isValid = false;
+        }
+        break;
+
+      case 'integer':
+        if (
+          typeof payloadValue !== 'number' ||
+          !Number.isInteger(payloadValue)
+        ) {
+          differences.push(
+            `${path}: Expected integer but got ${typeof payloadValue} (${payloadValue})`,
+          );
+          isValid = false;
+        }
+        break;
+
+      case 'boolean':
+        if (typeof payloadValue !== 'boolean') {
+          differences.push(
+            `${path}: Expected boolean but got ${typeof payloadValue} (${payloadValue})`,
+          );
+          isValid = false;
+        }
+        break;
+
+      case 'array':
+        if (!Array.isArray(payloadValue)) {
+          differences.push(
+            `${path}: Expected array but got ${typeof payloadValue}`,
+          );
+          isValid = false;
+        } else if (schemaProp.items) {
+          // Validate array items
+          payloadValue.forEach((item, index) => {
+            const itemPath = `${path}[${index}]`;
+            if (
+              !this.validatePropertyType(
+                schemaProp.items,
+                item,
+                itemPath,
+                differences,
+              )
+            ) {
+              isValid = false;
+            }
+          });
+        }
+        break;
+
+      case 'object':
+        if (
+          typeof payloadValue !== 'object' ||
+          payloadValue === null ||
+          Array.isArray(payloadValue)
+        ) {
+          differences.push(
+            `${path}: Expected object but got ${Array.isArray(payloadValue) ? 'array' : typeof payloadValue}`,
+          );
+          isValid = false;
+        } else if (schemaProp.properties) {
+          // Recursively validate object properties
+          if (
+            !this.deepCompareStructureWithTypes(
+              schemaProp.properties,
+              payloadValue,
+              path,
+              differences,
+            )
+          ) {
+            isValid = false;
+          }
+        }
+        break;
+
+      default:
+        // Unknown type - just check that payload value exists
+        if (payloadValue === null || payloadValue === undefined) {
+          differences.push(`${path}: Property value is null or undefined`);
+          isValid = false;
+        }
+        break;
+    }
+
+    return isValid;
   }
 }
