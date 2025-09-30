@@ -1,4 +1,4 @@
-import { Provider } from '@nestjs/common';
+import { Provider, Logger } from '@nestjs/common';
 import Redis from 'ioredis';
 import { redisConfig } from './redis.config';
 
@@ -10,11 +10,11 @@ export const redisProvider: Provider = {
     const redis = new Redis(redisConfig);
 
     redis.on('connect', () => {
-      console.log('Redis connected successfully');
+      Logger.log('Redis connected successfully');
     });
 
     redis.on('error', (error) => {
-      console.error('Redis connection error:', error);
+      Logger.error('Redis connection error:', error);
     });
 
     return redis;

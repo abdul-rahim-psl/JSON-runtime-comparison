@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CreateSchemaDto } from './dto/create-schema.dto';
 import { UpdateSchemaDto } from './dto/update-schema.dto';
 import { LookupSchemaDto } from './dto/lookup-schema.dto';
@@ -11,6 +11,8 @@ import {
 
 @Injectable()
 export class SchemasService {
+  private readonly logger = new Logger(SchemasService.name);
+
   constructor(
     @Inject('KNEX_CONNECTION') private knex: Knex,
     private readonly redisService: RedisService,
@@ -18,23 +20,43 @@ export class SchemasService {
   ) {}
 
   async findByEndpointPath(endpointPath: string) {
+    this.logger.debug(`Finding schema for endpoint: ${endpointPath}`);
+
     const cacheKey = `schema:${endpointPath}`;
     const cached = await this.redisService.get(cacheKey);
+
     if (cached) {
       return JSON.parse(cached);
     }
 
-    //ofc not found in cache
-    const result = await this.knex('schemastable')
-      .select('schema')
-      .where({ endpoint_path: endpointPath })
-      .first();
+    this.logger.debug(
+      `Schema not in cache, querying database for endpoint: ${endpointPath}`,
+    );
 
-    if (result) {
-      await this.redisService.set(cacheKey, JSON.stringify(result), 3600);
+    try {
+      const result = await this.knex('schemastable')
+        .select('schema')
+        .where({ endpoint_path: endpointPath })
+        .first();
+
+      if (result) {
+        this.logger.debug(
+          `Schema found in database for endpoint: ${endpointPath}`,
+        );
+        await this.redisService.set(cacheKey, JSON.stringify(result), 3600);
+        this.logger.debug(`Schema cached for endpoint: ${endpointPath}`);
+      } else {
+        this.logger.warn(`No schema found for endpoint: ${endpointPath}`);
+      }
+
+      return result || null;
+    } catch (error) {
+      this.logger.error(
+        `Error querying database for endpoint ${endpointPath}:`,
+        error.stack,
+      );
+      throw error;
     }
-
-    return result || null;
   }
 
   async lookupAndCompare(
@@ -50,17 +72,15 @@ export class SchemasService {
       };
     }
 
-    // Extract the schema from the result
     const schema = schemaResult.schema;
 
-    // Compare the schema with the provided payload
+    // compare the schema with the provided payload
     const comparisonResult =
       this.schemaComparisonService.compareSchemaWithPayload(
         schema,
         lookupDto.payload,
       );
 
-    // Return the comparison result along with the schema for reference
     return {
       ...comparisonResult,
       schema: schema,

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { parse } from 'path';
 
 export interface ComparisonResult {
   isMatch: boolean;
@@ -14,35 +15,8 @@ export class SchemaComparisonService {
     try {
       const differences: string[] = [];
 
-      // Parse schema if it's a string
-      let parsedSchema;
-      if (typeof schema === 'string') {
-        try {
-          parsedSchema = JSON.parse(schema);
-        } catch (e) {
-          return {
-            isMatch: false,
-            message: 'Invalid schema format - unable to parse JSON',
-            differences: ['Schema is not valid JSON'],
-          };
-        }
-      } else {
-        parsedSchema = schema;
-      }
-
-      // Use the full schema properties for validation (including types)
-      let schemaProperties;
-      if (parsedSchema.type === 'object' && parsedSchema.properties) {
-        // It's a JSON Schema format - use the full properties with type information
-        schemaProperties = parsedSchema.properties;
-      } else {
-        // Assume it's already in the right format
-        schemaProperties = parsedSchema;
-      }
-
-      // Perform deep comparison with type validation
       const isMatch = this.deepCompareStructureWithTypes(
-        schemaProperties,
+        schema.properties,
         payload,
         '',
         differences,
@@ -53,10 +27,9 @@ export class SchemaComparisonService {
         message: isMatch
           ? 'Payload structure matches the schema perfectly!'
           : 'Payload structure does not match the schema',
-        differences: differences.length > 0 ? differences : undefined,
+        differences: differences.length > 0 ? differences : [],
       };
     } catch (error) {
-      this.logger.error('Error during schema comparison:', error);
       return {
         isMatch: false,
         message: 'Error occurred during comparison',
@@ -78,12 +51,10 @@ export class SchemaComparisonService {
       return false;
     }
 
-    // Handle JSON Schema property definitions
     if (schema && typeof schema === 'object' && schema.type) {
       return this.validatePropertyType(schema, payload, path, differences);
     }
 
-    // Handle objects without type definition (treat as object type)
     if (
       typeof schema === 'object' &&
       schema !== null &&
@@ -103,7 +74,6 @@ export class SchemaComparisonService {
       const schemaKeys = Object.keys(schema);
       const payloadKeys = Object.keys(payload);
 
-      // Check for missing keys in payload
       const missingKeys = schemaKeys.filter(
         (key) => !payloadKeys.includes(key),
       );
@@ -114,7 +84,6 @@ export class SchemaComparisonService {
         });
       }
 
-      // Check for extra keys in payload
       const extraKeys = payloadKeys.filter((key) => !schemaKeys.includes(key));
       if (extraKeys.length > 0) {
         extraKeys.forEach((key) => {
@@ -125,7 +94,6 @@ export class SchemaComparisonService {
         });
       }
 
-      // Recursively check common keys
       let allMatch = true;
       schemaKeys.forEach((key) => {
         if (payloadKeys.includes(key)) {
@@ -207,7 +175,6 @@ export class SchemaComparisonService {
           );
           isValid = false;
         } else if (schemaProp.items) {
-          // Validate array items
           payloadValue.forEach((item, index) => {
             const itemPath = `${path}[${index}]`;
             if (
@@ -235,7 +202,6 @@ export class SchemaComparisonService {
           );
           isValid = false;
         } else if (schemaProp.properties) {
-          // Recursively validate object properties
           if (
             !this.deepCompareStructureWithTypes(
               schemaProp.properties,
@@ -250,7 +216,6 @@ export class SchemaComparisonService {
         break;
 
       default:
-        // Unknown type - just check that payload value exists
         if (payloadValue === null || payloadValue === undefined) {
           differences.push(`${path}: Property value is null or undefined`);
           isValid = false;
