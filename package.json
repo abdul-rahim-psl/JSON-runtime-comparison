@@ -27,6 +27,8 @@
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^11.0.1",
     "@types/ioredis": "^4.28.10",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "ioredis": "^5.8.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
