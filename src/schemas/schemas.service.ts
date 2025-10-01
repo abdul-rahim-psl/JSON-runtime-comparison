@@ -61,8 +61,9 @@ export class SchemasService {
 
   async lookupAndCompare(
     lookupDto: LookupSchemaDto,
+    endpoint: string,
   ): Promise<ComparisonResult & { schema?: any }> {
-    const schemaResult = await this.findByEndpointPath(lookupDto.path);
+    const schemaResult = await this.findByEndpointPath(endpoint);
 
     if (!schemaResult) {
       return {

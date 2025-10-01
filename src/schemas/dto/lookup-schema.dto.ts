@@ -1,4 +1,4 @@
 export class LookupSchemaDto {
-  path: string;
+  // path: string;
   payload: any; // The JSON payload to validate against the schema
 }

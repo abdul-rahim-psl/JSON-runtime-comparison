@@ -6,7 +6,7 @@ import {
   Patch,
   Param,
   Delete,
-  Query,
+  Logger,
   HttpStatus,
   HttpCode,
   BadRequestException,
@@ -20,12 +20,24 @@ import { LookupSchemaDto } from './dto/lookup-schema.dto';
 export class SchemasController {
   constructor(private readonly schemasService: SchemasService) {}
 
-  @Post('lookup')
-  @HttpCode(HttpStatus.OK) // Default to 200, but we'll override based on result
-  async lookup(@Body() lookupDto: LookupSchemaDto) {
-    const result = await this.schemasService.lookupAndCompare(lookupDto);
+  private readonly logger = new Logger(SchemasController.name);
 
-    // If validation fails, throw BadRequestException (400 status)
+  @Post('*endpoint')
+  @HttpCode(HttpStatus.OK)
+  async lookup(
+    @Param('endpoint') endpoint: string,
+    @Body() lookupDto: LookupSchemaDto,
+  ) {
+    this.logger.log(`Dynamic part: ${endpoint.toString()}`);
+    const transformedEndpoint: string =
+      '/' + endpoint.toString().replaceAll(',', '/');
+
+    this.logger.log(`Transformed endpoint: ${transformedEndpoint}`);
+    const result = await this.schemasService.lookupAndCompare(
+      lookupDto,
+      transformedEndpoint,
+    );
+
     if (!result.isMatch) {
       throw new BadRequestException({
         message: result.message,
@@ -35,7 +47,6 @@ export class SchemasController {
       });
     }
 
-    // If validation passes, return 200 OK with success message
     return {
       message: result.message,
       isMatch: result.isMatch,
